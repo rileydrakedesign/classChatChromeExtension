@@ -1,0 +1,14 @@
+#floatingChatBox {
+  font-family: Arial, sans-serif;
+}
+
+#floatingChatBox textarea,
+#floatingChatBox input {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+#floatingChatBox button {
+  font-size: 14px;
+  cursor: pointer;
+}
