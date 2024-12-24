@@ -16,10 +16,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Class Chat Assistant"
-  },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }

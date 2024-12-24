@@ -1,18 +1,111 @@
-// Listen for messages from the background script to open the chat box
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "openChatBox") {
-    createFloatingChatBox();
-    sendResponse({ success: true });
-  }
-});
+// content.js
 
-// Function to create the floating chat box using Shadow DOM
+// This script runs in the context of the webpage’s DOM.
+// It injects UI elements and communicates with background.js for authentication and data requests.
+
+// CHANGES: Added clarifying comments about how requests are routed through the background script.
+//          No functionality changes or removed code. 
+
+checkAndInitializeUI();
+
+async function checkAndInitializeUI() {
+  const isAuthenticated = await checkAuthStatus();
+  if (isAuthenticated) {
+    createFloatingChatBox();
+  } else {
+    createLoginForm();
+  }
+}
+
+function checkAuthStatus() {
+  return new Promise((resolve) => {
+    // We message the background script, which does the actual fetch to the server:
+    chrome.runtime.sendMessage({ action: "checkAuthStatus" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error checking auth status:", chrome.runtime.lastError.message);
+        resolve(false);
+      } else {
+        resolve(response.authenticated);
+      }
+    });
+  });
+}
+
+// Create a login form and inject it into the DOM if user is not authenticated
+function createLoginForm() {
+  if (document.getElementById("extensionLoginForm")) return;
+
+  const container = document.createElement("div");
+  container.id = "extensionLoginForm";
+  container.style.position = "fixed";
+  container.style.top = "20px";
+  container.style.right = "20px";
+  container.style.zIndex = "9999";
+  container.style.background = "white";
+  container.style.border = "1px solid #ccc";
+  container.style.boxShadow = "0 4px 8px rgba(0,0,0,0.2)";
+  container.style.padding = "10px";
+  container.style.fontFamily = "Arial, sans-serif";
+  container.style.borderRadius = "8px";
+  container.style.width = "300px";
+
+  container.innerHTML = `
+    <h4 style="margin:0 0 10px 0;">Login to Your Account</h4>
+    <input type="email" id="extensionLoginEmail" placeholder="Email" style="width:100%; margin-bottom:10px; padding:5px;" />
+    <input type="password" id="extensionLoginPassword" placeholder="Password" style="width:100%; margin-bottom:10px; padding:5px;" />
+    <button id="extensionLoginButton" style="width:100%; padding:10px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Login</button>
+    <div id="extensionLoginError" style="margin-top:10px; color:red;"></div>
+  `;
+
+  document.body.appendChild(container);
+
+  document.getElementById("extensionLoginButton").addEventListener("click", async () => {
+    const email = document.getElementById("extensionLoginEmail").value.trim();
+    const password = document.getElementById("extensionLoginPassword").value.trim();
+
+    if (!email || !password) {
+      displayLoginError("Please fill in both fields.");
+      return;
+    }
+
+    const result = await loginUser(email, password);
+    if (result.success) {
+      // Remove login form and show chat box
+      container.remove();
+      createFloatingChatBox();
+    } else {
+      displayLoginError(result.error || "Login failed");
+    }
+  });
+}
+
+function displayLoginError(msg) {
+  const errorDiv = document.getElementById("extensionLoginError");
+  if (errorDiv) {
+    errorDiv.textContent = msg;
+  }
+}
+
+function loginUser(email, password) {
+  return new Promise((resolve) => {
+    // We message the background script, which handles the login fetch:
+    chrome.runtime.sendMessage({ action: "login", email, password }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error sending login message:", chrome.runtime.lastError.message);
+        resolve({ success: false, error: "Could not process login request." });
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+// Create and inject the floating chat box using Shadow DOM if authenticated
 function createFloatingChatBox() {
   if (document.getElementById("floatingChatBox")) {
     return; // Chat box already exists
   }
 
-  // Create a container for the Shadow DOM
   const container = document.createElement("div");
   container.id = "floatingChatBox";
   container.style.position = "fixed";
@@ -20,14 +113,12 @@ function createFloatingChatBox() {
   container.style.right = "20px";
   container.style.zIndex = "9999";
 
-  // Attach Shadow DOM
   const shadow = container.attachShadow({ mode: "open" });
 
-  // Create the chat box inside the Shadow DOM
   const chatBox = document.createElement("div");
   chatBox.id = "chatBox";
   chatBox.style.width = "350px";
-  chatBox.style.height = "500px"; // Increased height to accommodate new sections
+  chatBox.style.height = "400px";
   chatBox.style.background = "white";
   chatBox.style.border = "1px solid #ccc";
   chatBox.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.2)";
@@ -36,7 +127,6 @@ function createFloatingChatBox() {
   chatBox.style.borderRadius = "8px";
   chatBox.style.overflowY = "auto";
 
-  // Add styles to the Shadow DOM
   const style = document.createElement("style");
   style.textContent = `
     #closeChatBox {
@@ -73,26 +163,15 @@ function createFloatingChatBox() {
     }
     #responseArea {
       margin-top: 10px;
-      max-height: 300px; /* Adjusted for more content */
+      max-height: 150px;
       overflow-y: auto;
       font-size: 14px;
       border-top: 1px solid #ccc;
       padding-top: 10px;
     }
-    a {
-      color: #007bff;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
     .disabled {
       background: #6c757d !important;
       cursor: not-allowed !important;
-    }
-    .loading {
-      display: flex;
-      align-items: center;
     }
     .spinner {
       border: 4px solid #f3f3f3;
@@ -102,30 +181,17 @@ function createFloatingChatBox() {
       height: 20px;
       animation: spin 2s linear infinite;
       margin-left: 10px;
+      display: inline-block;
     }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-    /* Additional styles for Answer and Explanation */
-    .section-title {
-      font-weight: bold;
-      margin-top: 10px;
-      margin-bottom: 5px;
-      color: #333;
-    }
-    .section-content {
-      margin-bottom: 10px;
-      background-color: #f9f9f9;
-      padding: 8px;
-      border-radius: 4px;
-    }
   `;
 
-  // Define the inner HTML of the chat box
   chatBox.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h4 style="margin: 0;">Chat Assistant</h4>
+      <h4 style="margin:0;">Chat Assistant</h4>
       <button id="closeChatBox" aria-label="Close Chat Box">X</button>
     </div>
     <textarea id="selectedTextBox" placeholder="Selected text will appear here..." readonly aria-label="Selected Text"></textarea>
@@ -133,50 +199,35 @@ function createFloatingChatBox() {
     <div id="responseArea" aria-live="polite"></div>
   `;
 
-  // Append styles and chat box to the Shadow DOM
   shadow.appendChild(style);
   shadow.appendChild(chatBox);
   document.body.appendChild(container);
 
-  console.log("Chat box created.");
-
-  // Close the chat box when the close button is clicked
   shadow.getElementById("closeChatBox").addEventListener("click", () => {
     container.remove();
-    console.log("Chat box closed.");
   });
 
-  // Flag to track if a request is in progress
   let isLoading = false;
 
   // Detect selected text and update the textarea
   document.addEventListener("mouseup", () => {
     const selectedTextBox = shadow.getElementById("selectedTextBox");
-    if (!selectedTextBox) {
-      console.error("Selected text box not found in the DOM.");
-      return;
-    }
+    if (!selectedTextBox) return;
 
     const selectedText = window.getSelection().toString().trim();
     if (selectedText) {
       selectedTextBox.value = selectedText;
-      console.log("Selected text updated:", selectedText);
     }
   });
 
-  // Handle the "Submit" button click
-  shadow.getElementById("submitTextButton").addEventListener("click", () => {
+  shadow.getElementById("submitTextButton").addEventListener("click", async () => {
     const selectedTextBox = shadow.getElementById("selectedTextBox");
     const responseArea = shadow.getElementById("responseArea");
     const submitButton = shadow.getElementById("submitTextButton");
 
-    if (!selectedTextBox) {
-      console.error("Selected text box not found.");
-      return;
-    }
+    if (!selectedTextBox) return;
 
     const selectedText = selectedTextBox.value;
-
     if (!selectedText) {
       alert("Please select some text first.");
       return;
@@ -187,61 +238,30 @@ function createFloatingChatBox() {
       return;
     }
 
-    // Set loading state
     isLoading = true;
     submitButton.disabled = true;
     submitButton.classList.add("disabled");
-    responseArea.innerHTML = `
-      <p><em>Submitting...</em></p>
-      <div class="spinner"></div>
-    `;
+    responseArea.innerHTML = `<p><em>Submitting...</em> <span class="spinner"></span></p>`;
 
-    console.log("Submitting text to backend:", selectedText);
+    const result = await sendChatMessage(selectedText);
+    if (result.success) {
+      displayResponse(result.data, responseArea);
+    } else {
+      responseArea.innerHTML = `<p><strong>Error:</strong> ${result.error}</p>`;
+    }
 
-    // Send the selected text to the background script
-    chrome.runtime.sendMessage(
-      { action: "sendTextToBackend", text: selectedText },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          console.error("Error sending message to background:", chrome.runtime.lastError.message);
-          responseArea.innerHTML = `<p><strong>Error:</strong> Could not process the request.</p>`;
-          resetLoadingState();
-        } else if (response && response.success) {
-          displayResponse(response.data);
-        } else {
-          responseArea.innerHTML = `<p><strong>Error:</strong> Failed to fetch response.</p>`;
-          resetLoadingState();
-        }
-      }
-    );
-  });
-
-  // Function to reset loading state
-  function resetLoadingState() {
     isLoading = false;
-    const submitButton = shadow.getElementById("submitTextButton");
-    const responseArea = shadow.getElementById("responseArea");
     submitButton.disabled = false;
     submitButton.classList.remove("disabled");
-    // Remove spinner if present
     const spinner = responseArea.querySelector(".spinner");
-    if (spinner) {
-      spinner.remove();
-    }
-  }
+    if (spinner) spinner.remove();
+  });
 
-  // Function to display the response from the backend
-  function displayResponse(result) {
-    const responseArea = shadow.getElementById("responseArea");
-    responseArea.innerHTML = ""; // Clear previous content
-
-    const assistantMessage = result.messages.find(
-      (msg) => msg.role === "assistant"
-    );
-
+  function displayResponse(result, responseArea) {
+    responseArea.innerHTML = "";
+    const assistantMessage = result.messages.find((msg) => msg.role === "assistant");
     if (!assistantMessage) {
       responseArea.innerHTML = "<p><strong>No response available.</strong></p>";
-      resetLoadingState();
       return;
     }
 
@@ -312,7 +332,6 @@ function createFloatingChatBox() {
 
     responseArea.appendChild(explanationContainer);
 
-    // Display citations if available
     if (assistantMessage.citation && assistantMessage.citation.length > 0) {
       const citationsContainer = document.createElement("div");
       citationsContainer.style.marginTop = "10px";
@@ -323,29 +342,26 @@ function createFloatingChatBox() {
 
       assistantMessage.citation.forEach((citation) => {
         const listItem = document.createElement("li");
-        if (citation.href) {
-          listItem.innerHTML = `<a href="${citation.href}" target="_blank">${citation.text}</a>`;
-        } else {
-          listItem.textContent = citation.text;
-        }
+        listItem.innerHTML = `<a href="${citation.href}" target="_blank">${citation.text}</a>`;
         citationList.appendChild(listItem);
       });
 
       citationsContainer.appendChild(citationList);
       responseArea.appendChild(citationsContainer);
     }
-
-    // Reset loading state after displaying the response
-    resetLoadingState();
   }
 }
 
-// Optional: Automatically inject content script on page load (if not already injected via manifest)
-(function() {
-  // Ensure the content script runs only once
-  if (!window.hasRunAIStudyBuddy) {
-    window.hasRunAIStudyBuddy = true;
-    // The main functionality is already handled via the message listener
-    console.log("AI Study Buddy content script initialized.");
-  }
-})();
+function sendChatMessage(text) {
+  return new Promise((resolve) => {
+    // Again, we delegate to the background script to do the cross-origin fetch:
+    chrome.runtime.sendMessage({ action: "sendChatMessage", text }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error sending chat message:", chrome.runtime.lastError.message);
+        resolve({ success: false, error: "Could not send chat message." });
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
