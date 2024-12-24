@@ -3,23 +3,27 @@
 // This script runs in the context of the webpage’s DOM.
 // It injects UI elements and communicates with background.js for authentication and data requests.
 
-// CHANGES: Added clarifying comments about how requests are routed through the background script.
-//          No functionality changes or removed code. 
-
-checkAndInitializeUI();
-
-async function checkAndInitializeUI() {
-  const isAuthenticated = await checkAuthStatus();
-  if (isAuthenticated) {
-    createFloatingChatBox();
-  } else {
-    createLoginForm();
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "toggleUI") {
+    const existingContainer = document.getElementById("floatingChatBox") || document.getElementById("extensionLoginForm");
+    if (existingContainer) {
+      existingContainer.remove();
+    } else {
+      // Check authentication status before injecting the appropriate UI
+      checkAuthStatus().then((isAuthenticated) => {
+        if (isAuthenticated) {
+          createFloatingChatBox();
+        } else {
+          createLoginForm();
+        }
+      });
+    }
   }
-}
+});
 
+// Function to check authentication status by messaging the background script
 function checkAuthStatus() {
   return new Promise((resolve) => {
-    // We message the background script, which does the actual fetch to the server:
     chrome.runtime.sendMessage({ action: "checkAuthStatus" }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error checking auth status:", chrome.runtime.lastError.message);
@@ -50,7 +54,10 @@ function createLoginForm() {
   container.style.width = "300px";
 
   container.innerHTML = `
-    <h4 style="margin:0 0 10px 0;">Login to Your Account</h4>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h4 style="margin:0 0 10px 0;">Login to Your Account</h4>
+      <button id="closeLoginForm" aria-label="Close Login Form" style="background: transparent; border: none; font-size: 16px; cursor: pointer;">&times;</button>
+    </div>
     <input type="email" id="extensionLoginEmail" placeholder="Email" style="width:100%; margin-bottom:10px; padding:5px;" />
     <input type="password" id="extensionLoginPassword" placeholder="Password" style="width:100%; margin-bottom:10px; padding:5px;" />
     <button id="extensionLoginButton" style="width:100%; padding:10px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Login</button>
@@ -59,6 +66,7 @@ function createLoginForm() {
 
   document.body.appendChild(container);
 
+  // Event listener for the login button
   document.getElementById("extensionLoginButton").addEventListener("click", async () => {
     const email = document.getElementById("extensionLoginEmail").value.trim();
     const password = document.getElementById("extensionLoginPassword").value.trim();
@@ -77,8 +85,14 @@ function createLoginForm() {
       displayLoginError(result.error || "Login failed");
     }
   });
+
+  // Event listener for the close button
+  document.getElementById("closeLoginForm").addEventListener("click", () => {
+    container.remove();
+  });
 }
 
+// Function to display login errors
 function displayLoginError(msg) {
   const errorDiv = document.getElementById("extensionLoginError");
   if (errorDiv) {
@@ -86,9 +100,9 @@ function displayLoginError(msg) {
   }
 }
 
+// Function to handle user login by messaging the background script
 function loginUser(email, password) {
   return new Promise((resolve) => {
-    // We message the background script, which handles the login fetch:
     chrome.runtime.sendMessage({ action: "login", email, password }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error sending login message:", chrome.runtime.lastError.message);
@@ -203,6 +217,7 @@ function createFloatingChatBox() {
   shadow.appendChild(chatBox);
   document.body.appendChild(container);
 
+  // Event listener for the close button
   shadow.getElementById("closeChatBox").addEventListener("click", () => {
     container.remove();
   });
@@ -220,6 +235,7 @@ function createFloatingChatBox() {
     }
   });
 
+  // Event listener for the submit button
   shadow.getElementById("submitTextButton").addEventListener("click", async () => {
     const selectedTextBox = shadow.getElementById("selectedTextBox");
     const responseArea = shadow.getElementById("responseArea");
@@ -257,6 +273,7 @@ function createFloatingChatBox() {
     if (spinner) spinner.remove();
   });
 
+  // Function to display the response from the backend
   function displayResponse(result, responseArea) {
     responseArea.innerHTML = "";
     const assistantMessage = result.messages.find((msg) => msg.role === "assistant");
@@ -332,6 +349,7 @@ function createFloatingChatBox() {
 
     responseArea.appendChild(explanationContainer);
 
+    // Handle citations if available
     if (assistantMessage.citation && assistantMessage.citation.length > 0) {
       const citationsContainer = document.createElement("div");
       citationsContainer.style.marginTop = "10px";
@@ -352,9 +370,10 @@ function createFloatingChatBox() {
   }
 }
 
+// Function to send chat messages by messaging the background script
 function sendChatMessage(text) {
   return new Promise((resolve) => {
-    // Again, we delegate to the background script to do the cross-origin fetch:
+    // Delegate to the background script to perform the cross-origin fetch:
     chrome.runtime.sendMessage({ action: "sendChatMessage", text }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error sending chat message:", chrome.runtime.lastError.message);

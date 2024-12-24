@@ -4,13 +4,10 @@
 // It listens for messages from content.js and performs actions like login, auth-check,
 // and sending chat messages to the server.
 
-// CHANGES: 
-// (1) Added 'mode: "cors"' to fetch calls to ensure cross-origin requests are explicitly allowed.
-// (2) Added clarifying comments to highlight that all server interaction is done here with credentials: "include".
-
+// Asynchronous function to check authentication status
 async function checkAuthStatus() {
   try {
-    // We explicitly set mode: "cors" and credentials: "include"
+    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/user/auth-status", {
       method: "GET",
       credentials: "include",
@@ -23,9 +20,10 @@ async function checkAuthStatus() {
   }
 }
 
+// Asynchronous function to handle user login
 async function handleLogin(email, password) {
   try {
-    // We explicitly set mode: "cors" and credentials: "include"
+    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/user/login", {
       method: "POST",
       headers: { 
@@ -49,9 +47,10 @@ async function handleLogin(email, password) {
   }
 }
 
+// Asynchronous function to send chat messages
 async function sendChatMessage(messageText) {
   try {
-    // We explicitly set mode: "cors" and credentials: "include"
+    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/chat/new", {
       method: "POST",
       headers: { 
@@ -67,7 +66,9 @@ async function sendChatMessage(messageText) {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch response from the backend.");
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || "Failed to fetch response from the backend.";
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -78,22 +79,39 @@ async function sendChatMessage(messageText) {
   }
 }
 
+// Function to inject or remove the UI in the active tab
+function toggleUI(tabId) {
+  chrome.tabs.sendMessage(tabId, { action: "toggleUI" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error("Error sending toggleUI message:", chrome.runtime.lastError.message);
+    }
+    // Optionally handle the response
+  });
+}
+
 // Listen for messages from content.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "checkAuthStatus") {
     checkAuthStatus().then((isAuthenticated) => {
       sendResponse({ authenticated: isAuthenticated });
     });
-    return true; // asynchronous response
+    return true; // indicates that the response is asynchronous
   }
 
   if (message.action === "login") {
     handleLogin(message.email, message.password).then(sendResponse);
-    return true; // asynchronous response
+    return true; // indicates that the response is asynchronous
   }
 
   if (message.action === "sendChatMessage") {
     sendChatMessage(message.text).then(sendResponse);
-    return true; // asynchronous response
+    return true; // indicates that the response is asynchronous
+  }
+});
+
+// Listen for extension icon clicks to toggle the UI
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id) {
+    toggleUI(tab.id);
   }
 });
