@@ -15,6 +15,12 @@
       "all_frames": true
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["style.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_title": "Class Chat Assistant"
   }

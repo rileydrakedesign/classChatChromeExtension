@@ -1,9 +1,3 @@
-// background.js
-
-// This script manages authentication and server requests.
-// It listens for messages from content.js and performs actions like login, auth-check,
-// and sending chat messages to the server.
-
 // Asynchronous function to check authentication status
 async function checkAuthStatus() {
   try {
