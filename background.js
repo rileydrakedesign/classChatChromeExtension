@@ -1,13 +1,14 @@
+// background.js
+
 // Asynchronous function to check authentication status
 async function checkAuthStatus() {
   try {
-    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/user/auth-status", {
       method: "GET",
       credentials: "include",
-      mode: "cors", // ensures cross-origin is handled
+      mode: "cors",
     });
-    return response.ok; // true if authenticated, false otherwise
+    return response.ok;
   } catch (error) {
     console.error("Error checking auth status:", error);
     return false;
@@ -17,7 +18,6 @@ async function checkAuthStatus() {
 // Asynchronous function to handle user login
 async function handleLogin(email, password) {
   try {
-    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/user/login", {
       method: "POST",
       headers: { 
@@ -42,20 +42,19 @@ async function handleLogin(email, password) {
 }
 
 // Asynchronous function to send chat messages
-async function sendChatMessage(messageText) {
+async function sendChatMessage(messageText, className) {
   try {
-    // Explicitly set mode: "cors" and credentials: "include"
     const response = await fetch("https://localhost:3000/api/v1/chat/new", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
         "X-Source": "chrome_extension" 
-       },
+      },
       credentials: "include",
       mode: "cors",
       body: JSON.stringify({
         message: messageText,
-        class_name: "null",
+        class_name: className,
       }),
     });
 
@@ -73,13 +72,32 @@ async function sendChatMessage(messageText) {
   }
 }
 
+async function getClasses() {
+  try {
+    const response = await fetch("https://localhost:3000/api/v1/user/classes", {
+      method: "GET",
+      credentials: "include",
+      mode: "cors",
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || "Failed to fetch classes.";
+      throw new Error(errorMessage);
+    }
+    const data = await response.json();
+    return { success: true, classes: data.classes };
+  } catch (error) {
+    console.error("Error fetching classes:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Function to inject or remove the UI in the active tab
 function toggleUI(tabId) {
   chrome.tabs.sendMessage(tabId, { action: "toggleUI" }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error sending toggleUI message:", chrome.runtime.lastError.message);
     }
-    // Optionally handle the response
   });
 }
 
@@ -89,17 +107,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     checkAuthStatus().then((isAuthenticated) => {
       sendResponse({ authenticated: isAuthenticated });
     });
-    return true; // indicates that the response is asynchronous
+    return true;
   }
 
   if (message.action === "login") {
     handleLogin(message.email, message.password).then(sendResponse);
-    return true; // indicates that the response is asynchronous
+    return true;
   }
 
   if (message.action === "sendChatMessage") {
-    sendChatMessage(message.text).then(sendResponse);
-    return true; // indicates that the response is asynchronous
+    // Forward both text and class_name
+    sendChatMessage(message.text, message.class_name).then(sendResponse);
+    return true;
+  }
+
+  // **NEW:** Handler for getting classes
+  if (message.action === "getClasses") {
+    getClasses().then(sendResponse);
+    return true;
   }
 });
 

@@ -142,9 +142,6 @@ function createFloatingChatBox() {
     return; // Chat box already exists
   }
 
-  // (Optional) If you'd like a new chat session ID each time:
-  // const chatSessionId = crypto.randomUUID();
-
   const container = document.createElement("div");
   container.id = "floatingChatBox";
   container.style.position = "fixed";
@@ -210,6 +207,14 @@ function createFloatingChatBox() {
       box-sizing: border-box;
       font-family: Arial, sans-serif;
     }
+    select {
+      margin-top: 15px;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+    }
     #responseArea {
       margin-top: 15px;
       max-height: 180px;
@@ -236,7 +241,6 @@ function createFloatingChatBox() {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-
     /* Enhanced Styles for Answer and Explanation */
     .section-title {
       font-size: 16px;
@@ -280,6 +284,10 @@ function createFloatingChatBox() {
       <h4 style="margin:0; font-size: 20px; font-weight: bold;">Chat Assistant</h4>
       <button id="closeChatBox" aria-label="Close Chat Box">X</button>
     </div>
+    <!-- Dropdown for selecting a class -->
+    <select id="classSelect" aria-label="Select Class">
+      <option value="null">Select a class</option>
+    </select>
     <textarea id="selectedTextBox" placeholder="Select text on the page and submit here..." aria-label="Selected Text"></textarea>
     <button id="submitTextButton" aria-label="Submit Selected Text">Submit</button>
     <div id="responseArea" aria-live="polite"></div>
@@ -288,6 +296,9 @@ function createFloatingChatBox() {
   shadow.appendChild(style);
   shadow.appendChild(chatBox);
   document.body.appendChild(container);
+
+  // Load classes into the dropdown via background script
+  loadUserClasses(shadow.getElementById("classSelect"));
 
   // Event listener for the close button
   shadow.getElementById("closeChatBox").addEventListener("click", () => {
@@ -312,6 +323,7 @@ function createFloatingChatBox() {
     const selectedTextBox = shadow.getElementById("selectedTextBox");
     const responseArea = shadow.getElementById("responseArea");
     const submitButton = shadow.getElementById("submitTextButton");
+    const classSelect = shadow.getElementById("classSelect");
 
     if (!selectedTextBox) return;
 
@@ -331,8 +343,11 @@ function createFloatingChatBox() {
     submitButton.classList.add("disabled");
     responseArea.innerHTML = `<p><em>Submitting...</em> <span class="spinner"></span></p>`;
 
-    // Example usage of sending a chat message
-    const result = await sendChatMessage(selectedText);
+    // Get the selected class name; if none, it will be "null"
+    const selectedClassName = classSelect.value;
+
+    // Send the chat message with the text and selected class name
+    const result = await sendChatMessage(selectedText, selectedClassName);
     if (result.success) {
       displayResponse(result.data, responseArea);
     } else {
@@ -441,14 +456,13 @@ function createFloatingChatBox() {
 ///////////////////////////////
 // 5. SEND CHAT MESSAGE
 ///////////////////////////////
-function sendChatMessage(text) {
+function sendChatMessage(text, className) {
   return new Promise((resolve) => {
-    // If you'd like to pass chatSessionId, you can do that as well
     chrome.runtime.sendMessage(
       {
         action: "sendChatMessage",
         text,
-        // chatSessionId,
+        class_name: className, // Pass the selected class name
       },
       (response) => {
         if (chrome.runtime.lastError) {
@@ -460,4 +474,31 @@ function sendChatMessage(text) {
       }
     );
   });
+}
+
+///////////////////////////////
+// 4a. LOAD USER CLASSES
+///////////////////////////////
+async function loadUserClasses(selectElement) {
+  try {
+    chrome.runtime.sendMessage({ action: "getClasses" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error sending getClasses message:", chrome.runtime.lastError.message);
+        return;
+      }
+      if (!response || !response.success) {
+        console.error("Failed to get classes", response && response.error);
+        return;
+      }
+      // Assume response.classes is an array of objects with a "name" property
+      response.classes.forEach((cls) => {
+        const option = document.createElement("option");
+        option.value = cls.name; // or use an id if preferred
+        option.textContent = cls.name;
+        selectElement.appendChild(option);
+      });
+    });
+  } catch (error) {
+    console.error("Error fetching classes:", error);
+  }
 }
